@@ -23,11 +23,11 @@ if st.button("🔍 Screen Resumes"):
 
         st.subheader("📊 Ranked Results")
         for name, score in ranked_results:
-            st.write(f"✅ **{name}** → `{round(score * 100, 2)}% match`")
+            st.write(f"✅ **{name}** → `{score}% match`")
 
         st.subheader("📈 Visual Match Graph")
         names = [r[0] for r in ranked_results]
-        scores = [round(r[1]*100, 2) for r in ranked_results]
+        scores = [r[1] for r in ranked_results]
 
         fig, ax = plt.subplots()
         ax.barh(names[::-1], scores[::-1], color='skyblue')
