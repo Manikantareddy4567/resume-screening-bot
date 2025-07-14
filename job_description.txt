@@ -1,0 +1,1 @@
+Looking for a Python developer with experience in machine learning, NLP, and data analysis. Must be skilled in pandas, scikit-learn, and have basic knowledge of cloud technologies.
