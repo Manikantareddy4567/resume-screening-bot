@@ -80,7 +80,7 @@ def get_ranked_resumes(resume_dict, job_description_text):
         raw_resume = resume_dict[name]
         raw_score = keyword_match_score(job_description_text, raw_resume)
 
-        # Final weight tweak: 85% keyword match, 15% cosine
+
         combined = round(0.15 * cos_score + 0.85 * raw_score, 2)
 
         print(f"🔀 {name}: Cosine = {cos_score}%, Keyword = {raw_score:.2f}%, Final = {combined}%")
