@@ -6,64 +6,85 @@ from nltk.stem import PorterStemmer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
+# Download stopwords
 nltk.download('stopwords')
 stop_words = set(stopwords.words('english'))
 stemmer = PorterStemmer()
 
-# ✅ Improved: Extract text from all pages
+# Synonym normalization map
+synonym_map = {
+    "ml": "machine learning",
+    "ai": "artificial intelligence",
+    "nlp": "natural language processing",
+    "viz": "visualization",
+    "cv": "computer vision",
+    "tf": "tensorflow",
+    "py": "python"
+}
+
+def normalize_text(text):
+    text = text.lower()
+    for short, full in synonym_map.items():
+        text = text.replace(short, full)
+    return text
+
 def extract_text_from_pdf(pdf_file):
     text = ""
-    with pdfplumber.open(pdf_file) as pdf:
-        for page in pdf.pages:
-            page_text = page.extract_text()
-            if page_text:
-                text += page_text
+    try:
+        with pdfplumber.open(pdf_file) as pdf:
+            for page in pdf.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+    except Exception as e:
+        print("⚠️ PDF Extraction Error:", e)
     return text.strip()
 
-# ✅ Clean and stem text
 def clean_text(text):
+    text = normalize_text(text)
     text = re.sub(r'[^a-zA-Z]', ' ', text)
     words = text.lower().split()
     words = [stemmer.stem(word) for word in words if word not in stop_words]
     return ' '.join(words)
 
-# ✅ Optional fallback: Keyword matching
 def keyword_match_score(jd_text, resume_text):
-    jd_keywords = [word.lower() for word in jd_text.split() if len(word) > 2]
-    resume_lower = resume_text.lower()
-    match_count = sum(1 for word in jd_keywords if word in resume_lower)
-    return (match_count / len(jd_keywords)) * 100
+    jd_keywords = set(jd_text.lower().split())
+    resume_words = set(resume_text.lower().split())
+    matches = jd_keywords.intersection(resume_words)
+    return (len(matches) / len(jd_keywords)) * 100 if jd_keywords else 0
 
-# ✅ Main resume ranking logic
 def get_ranked_resumes(resume_dict, job_description_text):
-    # Debugging info
-    print("🔍 Job Description Sample:", job_description_text[:300])
-    for name, text in resume_dict.items():
-        print(f"\n📄 Resume: {name} | Length: {len(text)}")
-        print("First 300 chars:\n", text[:300])
-    
-    # Clean all text
+    print("🔍 JD Preview:", job_description_text[:300])
+
+    # Cleaned text
     cleaned_jd = clean_text(job_description_text)
     cleaned_resumes = {k: clean_text(v) for k, v in resume_dict.items()}
-    
     corpus = [cleaned_jd] + list(cleaned_resumes.values())
-    
-    # Vectorize
-    vectorizer = TfidfVectorizer()
+
+    # Vectorizer settings for better overlap
+    vectorizer = TfidfVectorizer(
+        stop_words="english",
+        lowercase=True,
+        ngram_range=(1, 2),
+        max_features=7000,
+        sublinear_tf=True
+    )
     tfidf_matrix = vectorizer.fit_transform(corpus)
-    
-    # Compute cosine similarity and scale
-    similarities = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:]).flatten()
-    similarities = [round(score * 100, 2) for score in similarities]  # scaled as percentage
-    
-    # Optional fallback if similarity very low
-    for i, score in enumerate(similarities):
-        if score < 10:
-            name = list(resume_dict.keys())[i]
-            fallback_score = keyword_match_score(job_description_text, resume_dict[name])
-            print(f"⚠️ Low cosine match for {name}. Fallback keyword score: {fallback_score:.2f}")
-            similarities[i] = round(fallback_score, 2)
-    
-    # Combine and sort
-    ranked = sorted(zip(resume_dict.keys(), similarities), key=lambda x: x[1], reverse=True)
+    jd_vector = tfidf_matrix[0:1]
+    resume_vectors = tfidf_matrix[1:]
+    cosine_scores = cosine_similarity(jd_vector, resume_vectors).flatten()
+    cosine_scores = [round(score * 100, 2) for score in cosine_scores]
+
+    final_scores = []
+    for i, (name, cos_score) in enumerate(zip(resume_dict.keys(), cosine_scores)):
+        raw_resume = resume_dict[name]
+        raw_score = keyword_match_score(job_description_text, raw_resume)
+
+        # Final weight tweak: 85% keyword match, 15% cosine
+        combined = round(0.15 * cos_score + 0.85 * raw_score, 2)
+
+        print(f"🔀 {name}: Cosine = {cos_score}%, Keyword = {raw_score:.2f}%, Final = {combined}%")
+        final_scores.append((name, combined))
+
+    ranked = sorted(final_scores, key=lambda x: x[1], reverse=True)
     return ranked
